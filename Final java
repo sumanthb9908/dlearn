@@ -1,0 +1,40 @@
+# ---------- Stage 1: Build ----------
+FROM maven:3.9.2-eclipse-temurin-20 AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy only the pom first (for caching)
+COPY pom.xml .
+
+# Download dependencies
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY src ./src
+
+# Build the jar (skip tests for faster build in CI/CD)
+RUN mvn clean package -DskipTests
+
+# ---------- Stage 2: Runtime ----------
+FROM eclipse-temurin:20-jdk-alpine
+
+# Create non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+# Copy the jar from builder
+COPY --from=builder /app/target/*.jar app.jar
+
+# Change ownership
+RUN chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Start app
+ENTRYPOINT ["java","-jar","app.jar"]
